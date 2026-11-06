@@ -149,6 +149,28 @@ test('highest total wins, and less time breaks a tie', () => {
   assert.deepEqual(leaderboard(players, scores).map((p) => p.name), ['Bob', 'Ann', 'Cy']);
 });
 
+test('a game stopped early keeps only the questions played', () => {
+  const players = { a: { name: 'Ann' } };
+  const key = { q0: { o0: 1, o1: 0 }, q1: { o0: 1, o1: 0 } };
+  const attempts = { a: { q0: { o0: { at: 0 } } } };
+  const starts = { q0: 0 };
+  const h = buildHistory({
+    pin: '123456',
+    meta: { title: 'T', cat: 'gk', type: 'mcq', created: 1, limitMs: 15000 },
+    questions: [{ q: 'One?', o: ['y', 'n'] }],
+    key,
+    players,
+    attempts,
+    scores: totalScores('mcq', ['a'], attempts, key, starts),
+    starts,
+    endedAt: 2,
+    stoppedEarly: true,
+  });
+  assert.equal(h.stoppedEarly, true);
+  assert.equal(h.questions.length, 1);
+  assert.equal(h.players[0].score, 1000);
+});
+
 test('history records the event, and the CSV neutralises spreadsheet formulas', () => {
   const players = { a: { name: '=HACK()' }, b: { name: 'Bob' } };
   const key = { q0: { o0: 1, o1: 0 } };

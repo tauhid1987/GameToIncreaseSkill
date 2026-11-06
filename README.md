@@ -22,6 +22,8 @@ The right answer shows for 3 seconds between questions. To change any of these n
 
 The host's page must stay open, because it is what moves the game along. If it reloads, the game carries on from where it was.
 
+Every game is saved to **Event history**, including one you end early, which keeps the questions played so far. Only an approved host can open it, at `history.html`.
+
 ## Pages
 
 - `index.html`: players join here (the QR code opens this with the PIN filled in).

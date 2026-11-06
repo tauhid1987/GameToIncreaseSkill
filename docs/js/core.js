@@ -252,7 +252,7 @@ export function leaderboard(players, scores) {
 
 // ---------- event history ----------
 
-export function buildHistory({ pin, meta, questions, key, players, attempts, scores, starts, endedAt }) {
+export function buildHistory({ pin, meta, questions, key, players, attempts, scores, starts, endedAt, stoppedEarly = false }) {
   const board = leaderboard(players, scores);
   const answered = (id, qi) => orderedAttempts(attempts?.[id]?.[`q${qi}`]);
   return {
@@ -263,6 +263,7 @@ export function buildHistory({ pin, meta, questions, key, players, attempts, sco
     type: meta.type,
     created: meta.created,
     endedAt,
+    stoppedEarly,
     playerCount: board.length,
     winner: board[0]?.name || '',
     topScore: board[0]?.s || 0,

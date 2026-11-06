@@ -319,7 +319,10 @@ async function main() {
   await host.goto(`${BASE}/history.html`);
   await host.getByRole('cell', { name: 'E2E quick round' }).waitFor();
   await host.getByRole('cell', { name: 'E2E survey' }).waitFor();
-  assert.equal(await host.getByRole('cell', { name: 'E2E resume' }).count(), 0, 'a game stopped early is not recorded');
+  // A game ended part-way is kept too, and history opens straight from its link after a reload.
+  await host.getByRole('cell', { name: /E2E resume/ }).getByText('Stopped early').waitFor();
+  await host.reload();
+  await host.getByRole('cell', { name: 'E2E quick round' }).waitFor();
   await shot(host, 'history-list');
   await host.getByRole('cell', { name: 'E2E quick round' }).click();
   await host.getByRole('heading', { name: 'E2E quick round' }).waitFor();

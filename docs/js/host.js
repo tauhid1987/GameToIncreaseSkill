@@ -201,9 +201,33 @@ async function finish() {
   await update(game('state'), { phase: 'final' });
 }
 
+// A game ended part-way is still saved, with the questions played so far.
+async function saveStoppedGame() {
+  const [a, st] = await Promise.all([get(game('attempts')), get(game('starts'))]);
+  const played = st.val() || {};
+  if (!Object.keys(played).length) return;
+  const allAttempts = a.val() || {};
+  await set(dbRef(`history/${meta.created}-${pin}`), buildHistory({
+    pin,
+    meta,
+    questions: questions.slice(0, Object.keys(played).length),
+    key,
+    players,
+    attempts: allAttempts,
+    scores: totalScores(meta.type, Object.keys(players), allAttempts, key, played, meta.limitMs),
+    starts: played,
+    endedAt: Date.now(),
+    stoppedEarly: true,
+  }));
+}
+
 async function closeGame() {
   const running = state && state.phase !== 'final' && state.phase !== 'lobby';
-  if (running && !confirm('Stop this game? It has not finished, so it will not be saved to history.')) return;
+  if (running) {
+    if (!confirm('End this game now? The results so far will be saved to Event history.')) return;
+    clearTimeout(timer);
+    await saveStoppedGame();
+  }
   const p = pin;
   detach();
   await remove(dbRef(`games/${p}`));
