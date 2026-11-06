@@ -4,7 +4,7 @@ export const QUESTIONS_PER_GAME = 10;
 export const LIMIT_MS = 15000;        // time to answer each question
 export const SURVEY_LIMIT_MS = 20000; // the survey has more answers to read
 export const REVEAL_MS = 3000;        // how long the answer stays on screen before auto-next
-export const WRONG_PENALTY = 0.25;    // each wrong pick takes 25% off a quick-round question
+export const QUICK_GAP_MS = 1500;     // pause between quick-round questions, with no answer shown
 export const SURVEY_MIN_OPTIONS = 6;
 export const SURVEY_MAX_OPTIONS = 8;
 export const SURVEY_MIN_WRONG = 2;
@@ -219,7 +219,6 @@ export function rankedAnswers(options, values) {
 export function buildGame(picked, type, rng = Math.random) {
   const questions = [];
   const key = {};
-  const ranks = {};
   picked.forEach((item, qi) => {
     const order = shuffled(item.o.map((_, i) => i), rng);
     questions.push({ q: item.q, o: order.map((i) => item.o[i]) });
@@ -228,13 +227,8 @@ export function buildGame(picked, type, rng = Math.random) {
       values[`o${shown}`] = type === 'survey' ? item.p[src] : (src === item.c ? 1 : 0);
     });
     key[`q${qi}`] = values;
-    if (type === 'survey') {
-      const shownRanks = {};
-      order.forEach((src, shown) => { shownRanks[`o${shown}`] = peopleRank(item.p[src], item.p); });
-      ranks[`q${qi}`] = shownRanks;
-    }
   });
-  return { questions, key, ranks };
+  return { questions, key };
 }
 
 // ---------- scoring ----------
@@ -260,19 +254,11 @@ export function scoreQuestion(type, rawAttempts, values, startedAt, limitMs = LI
       ms: hits.length ? timeOf(hits[hits.length - 1]) : 0,
     };
   }
-  const hit = attempts.findIndex((a) => valueOf(a) > 0);
-  if (hit < 0) return { points: 0, ms: 0 };
-  const ms = Math.max(0, attempts[hit].at - startedAt);
-  const speed = 500 + 500 * Math.max(0, 1 - ms / limitMs);
-  return { points: Math.round(speed * Math.max(0, 1 - WRONG_PENALTY * hit)), ms };
-}
-
-// True once a player has nothing left to do on this question, so the game need not wait for them.
-export function hasFinished(type, rawAttempts, values) {
-  const attempts = orderedAttempts(rawAttempts);
-  const optionCount = Object.keys(values || {}).length;
-  if (type === 'survey') return attempts.length >= Math.min(SURVEY_PICKS, optionCount);
-  return attempts.some((a) => values?.[`o${a.opt}`] > 0) || attempts.length >= optionCount;
+  // A quick-round player has one answer: the last one chosen before time ran out.
+  const last = attempts[attempts.length - 1];
+  if (!last || valueOf(last) <= 0) return { points: 0, ms: 0 };
+  const ms = Math.max(0, last.at - startedAt);
+  return { points: Math.round(500 + 500 * Math.max(0, 1 - ms / limitMs)), ms };
 }
 
 // starts is { q0: startedAt, q1: startedAt, ... } for the questions played so far.

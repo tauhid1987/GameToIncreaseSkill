@@ -9,17 +9,17 @@ It is a static site (GitHub Pages) with Firebase Realtime Database. There is no 
 | | Quick round (all normal categories) | জনমত ১০০ (100 people survey) |
 |---|---|---|
 | Questions per game | 10 | 10 |
-| Time per question | Up to 15 seconds. It moves on by itself at the limit, or as soon as every player has finished | Up to 20 seconds, the same way |
+| Time per question | 15 seconds, then it moves on by itself | 20 seconds, the same way |
 | Answers | 2 to 4 | 6 to 8: ranked answers with the top 3 clearly highest, plus at least 2 close-sounding wrong |
-| Wrong pick | Marked at once. Choose again until the time runs out | Uses up one of your 3 picks |
-| After a pick | Right or wrong | Right answers show their rank and how many of the 100 people gave them, such as "Rank 1 · 50 / 100" |
-| Points | 500 + up to 500 for speed, minus 25% per wrong pick | Marks plus timing: the people behind each right answer, plus up to 20% for picking it quickly. With 3 picks, finding the top 3 scores best |
-| Scores during play | Hidden. Players see right or wrong, and scores appear on the final leaderboard | Shown after every question |
+| Choosing | One answer. Tap another to change it until time runs out; the last one counts. Nothing shows if it is right | Up to 3 answers. Tap a chosen one to unselect it. Nothing shows if it is right until the question ends |
+| After the question | Moves on with no answer shown. Right answers appear on the final screen | All answers show their rank and how many of the 100 people gave them, such as "1 · 50 / 100" |
+| Points | 500 + up to 500 for speed, timed from the last answer chosen | Marks plus timing: the people behind each right answer, plus up to 20% for picking it quickly. With 3 picks, finding the top 3 scores best |
+| Scores during play | Hidden until the final leaderboard | Shown after every question |
 | Winner | Highest total. On a tie, the player who took less time | Same |
 
 The 100-people category is dummy training content for practising guessing. Its people counts are invented.
 
-The right answer shows for 3 seconds between questions. To change any of these numbers, edit the top of [docs/js/core.js](docs/js/core.js). The same file holds the category list.
+To change any of these numbers, edit the top of [docs/js/core.js](docs/js/core.js). The same file holds the category list.
 
 The host's page must stay open, because it is what moves the game along. If it reloads, the game carries on from where it was.
 
@@ -107,7 +107,7 @@ With `npm run dev`, open the emulator screen at http://127.0.0.1:4040, add a use
 
 ## How cheating is kept out
 
-- Players never receive the answer key or upcoming questions. A player can only read the value of an option after picking it, and the time window is enforced by the database rules.
+- Players never receive the answer key or upcoming questions, and the time window is enforced by the database rules.
 - Answer times come from the Firebase server clock, not the phone, so a wrong phone clock changes nothing.
-- A pick can't be changed or removed once made, and players can't see each other's picks.
+- Answers can only be changed while the question is open, and players can't see each other's picks.
 - Only the host's account can write scores.

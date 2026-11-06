@@ -3,8 +3,8 @@ import {
   requireHost, hostSignOut,
 } from './fb.js';
 import {
-  CATEGORIES, QUESTIONS_PER_GAME, LIMIT_MS, SURVEY_LIMIT_MS, REVEAL_MS, categoryById, pickQuestions, buildGame,
-  totalScores, leaderboard, buildHistory, listSets, nextSet, questionsInSet, hasFinished, rankedAnswers,
+  CATEGORIES, QUESTIONS_PER_GAME, LIMIT_MS, SURVEY_LIMIT_MS, REVEAL_MS, QUICK_GAP_MS, categoryById, pickQuestions, buildGame,
+  totalScores, leaderboard, buildHistory, listSets, nextSet, questionsInSet, rankedAnswers,
   SURVEY_PEOPLE, esc,
 } from './core.js';
 
@@ -14,7 +14,7 @@ const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 // Shorter times are only accepted on localhost, for the automated tests.
 const params = new URLSearchParams(location.search);
 const limitOverride = LOCAL && params.get('limit') ? Number(params.get('limit')) : null;
-const revealMs = LOCAL && params.get('reveal') ? Number(params.get('reveal')) : REVEAL_MS;
+const revealOverride = LOCAL && params.get('reveal') ? Number(params.get('reveal')) : null;
 
 let uid;
 let pin = null;
@@ -28,9 +28,7 @@ let scores = {};
 let reveal = {};
 let starts = {};
 let timer = null;
-let endingEarly = false;
 let unsubscribe = [];
-const FINISH_PAUSE_MS = 800;
 
 const game = (path) => dbRef(`games/${pin}/${path}`);
 
@@ -100,7 +98,7 @@ async function createGame(catId, setName, title, items) {
     hostUid: uid, title: title || `${cat.label} · ${setName}`, cat: catId, set: setName, type: cat.type,
     total: picked.length,
     limitMs: limitOverride || (cat.type === 'survey' ? SURVEY_LIMIT_MS : LIMIT_MS),
-    revealMs,
+    revealMs: revealOverride || (cat.type === 'survey' ? REVEAL_MS : QUICK_GAP_MS),
     created: Date.now(),
   };
   for (let tries = 0; tries < 8; tries++) {
@@ -108,7 +106,7 @@ async function createGame(catId, setName, title, items) {
     if ((await get(dbRef(`games/${p}/meta`))).exists()) continue;
     pin = p;
     await set(dbRef(`games/${p}`), {
-      meta: newMeta, questions: built.questions, key: built.key, ranks: built.ranks, state: { phase: 'lobby', idx: -1 },
+      meta: newMeta, questions: built.questions, key: built.key, state: { phase: 'lobby', idx: -1 },
     });
     await set(dbRef(`hostGames/${uid}/current`), p);
     const used = {};
@@ -133,7 +131,7 @@ async function attach() {
     onValue(game('players'), (s) => { players = s.val() || {}; render(); }),
     onValue(game('attempts'), (s) => {
       attempts = s.val() || {};
-      if (state?.phase === 'question') { renderAnswered(); endEarlyIfAllFinished(); }
+      if (state?.phase === 'question') renderAnswered();
     }),
     onValue(game('scores'), (s) => { scores = s.val() || {}; render(); }),
     onValue(game('reveal'), (s) => { reveal = s.val() || {}; render(); }),
@@ -151,23 +149,12 @@ function detach() {
 // The game moves itself along, so everything hangs off the current state. Reloading the page resumes it.
 function schedule() {
   clearTimeout(timer);
-  endingEarly = false;
   if (!state) return;
   if (state.phase === 'question') {
     timer = setTimeout(showResults, Math.max(0, state.startedAt + meta.limitMs + 800 - serverNow()));
   } else if (state.phase === 'results') {
     timer = setTimeout(nextQuestion, Math.max(0, state.revealedAt + meta.revealMs - serverNow()));
   }
-}
-
-// Once every player is done there is nothing to wait for. The short pause lets the last pick show.
-function endEarlyIfAllFinished() {
-  const ids = Object.keys(players);
-  const q = `q${state.idx}`;
-  if (endingEarly || !ids.length || !ids.every((id) => hasFinished(meta.type, attempts[id]?.[q], key[q]))) return;
-  endingEarly = true;
-  clearTimeout(timer);
-  timer = setTimeout(showResults, FINISH_PAUSE_MS);
 }
 
 async function nextQuestion() {
@@ -275,12 +262,14 @@ function render() {
   } else if (state.phase === 'results') {
     const r = reveal[`q${state.idx}`];
     if (!r) return;
-    const ranked = rankedAnswers(r.o, r.val);
-    const right = meta.type === 'survey'
-      ? `<ol class="survey">${ranked.map((x) => `<li class="${x.people ? 'hit' : 'miss'}"><span class="rk">${x.rank || '–'}</span><span class="ans">${esc(x.text)}</span><b>${x.people} / ${SURVEY_PEOPLE}</b></li>`).join('')}</ol>`
-      : `<p class="answer">✓ ${esc(ranked[0].text)}</p>`;
-    const top = meta.type === 'survey' ? `<div class="card"><h2>Top players</h2>${boardHtml(5)}</div>` : '';
-    html = `<div class="card"><h2>${esc(r.q)}</h2>${right}</div>${top}<div class="row">${close}</div>`;
+    // A quick round reveals nothing until the end, because this screen is often on a projector.
+    if (meta.type !== 'survey') {
+      html = `<div class="card center"><h2>Next question…</h2></div><div class="row">${close}</div>`;
+    } else {
+      const ranked = rankedAnswers(r.o, r.val);
+      html = `<div class="card"><h2>${esc(r.q)}</h2><ol class="survey">${ranked.map((x) => `<li class="${x.people ? 'hit' : 'miss'}"><span class="rk">${x.rank || '–'}</span><span class="ans">${esc(x.text)}</span><b>${x.people} / ${SURVEY_PEOPLE}</b></li>`).join('')}</ol></div>
+        <div class="card"><h2>Top players</h2>${boardHtml(5)}</div><div class="row">${close}</div>`;
+    }
   } else if (state.phase === 'final') {
     html = `<div class="card"><h2>Final leaderboard</h2>${boardHtml(100)}
       <p class="mute">Saved to <a href="history.html">Event history</a>.</p></div><div class="row">${close}</div>`;

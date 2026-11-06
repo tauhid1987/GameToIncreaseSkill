@@ -37,26 +37,12 @@
             "$other": { ".validate": false }
           }
         },
-        "key": {
-          "$q": {
-            "$o": {
-              ".read": "auth != null && root.child('games').child($pin).child('attempts').child(auth.uid).child($q).child($o).exists()"
-            }
-          }
-        },
-        "ranks": {
-          "$q": {
-            "$o": {
-              ".read": "auth != null && root.child('games').child($pin).child('attempts').child(auth.uid).child($q).child($o).exists()"
-            }
-          }
-        },
         "attempts": {
           "$uid": {
             ".read": "auth != null && auth.uid === $uid",
             "$q": {
               "$o": {
-                ".write": "auth != null && auth.uid === $uid && !data.exists() && newData.exists() && root.child('games').child($pin).child('players').child(auth.uid).exists() && root.child('games').child($pin).child('state/phase').val() === 'question' && $q === 'q' + root.child('games').child($pin).child('state/idx').val() && now <= root.child('games').child($pin).child('state/startedAt').val() + root.child('games').child($pin).child('meta/limitMs').val() + 500",
+                ".write": "auth != null && auth.uid === $uid && root.child('games').child($pin).child('players').child(auth.uid).exists() && root.child('games').child($pin).child('state/phase').val() === 'question' && $q === 'q' + root.child('games').child($pin).child('state/idx').val() && now <= root.child('games').child($pin).child('state/startedAt').val() + root.child('games').child($pin).child('meta/limitMs').val() + 500",
                 ".validate": "newData.hasChildren(['at']) && newData.child('at').val() === now && root.child('games').child($pin).child('key').child($q).child($o).exists()",
                 "at": { ".validate": true },
                 "$other": { ".validate": false }

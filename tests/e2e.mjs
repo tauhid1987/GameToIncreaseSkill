@@ -3,7 +3,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
 import { chromium } from 'playwright';
-import { peopleRank } from '../docs/js/core.js';
 
 const BASE = 'http://127.0.0.1:5055';
 const PACK = new URL('../questions/', import.meta.url);
@@ -111,26 +110,30 @@ async function quickRound(browser, host) {
     const right = Object.keys(k).find((o) => k[o] === 1).slice(1);
     const wrong = Object.keys(k).find((o) => k[o] === 0).slice(1);
     await p1.locator(`[data-opt="${right}"]`).click();
-    await p1.locator('.opt.right').waitFor();
-    // Wrong first: it must be marked and stay disabled, and the player can choose again.
+    await p1.locator(`[data-opt="${right}"].selected`).waitFor();
+    // The first choice is marked only as selected, never as right or wrong.
     await p2.locator(`[data-opt="${wrong}"]`).click();
-    await p2.locator('.opt.wrong').waitFor();
-    await p2.getByText('Wrong. Choose again').waitFor();
-    assert.equal(await p2.locator(`[data-opt="${wrong}"]`).isDisabled(), true);
-    if (i === 0) await shot(p2, 'player-wrong-rechoose');
+    await p2.locator(`[data-opt="${wrong}"].selected`).waitFor();
+    await p2.getByText('You can change it until time runs out').waitFor();
+    assert.equal(await p2.locator('.opt.right, .opt.wrong').count(), 0, 'no right or wrong during the question');
+    if (i === 0) await shot(p2, 'player-first-choice');
+    // Choosing again unselects the first one, and every answer stays tappable.
     await p2.locator(`[data-opt="${right}"]`).click();
-    await p2.locator('.opt.right').waitFor();
-    if (i === 0) await shot(p2, 'player-rechosen-correct');
-    // After getting it right, the question is locked.
-    assert.equal(await p2.locator('[data-opt]:not([disabled])').count(), 0);
+    await p2.locator(`[data-opt="${right}"].selected`).waitFor();
+    assert.equal(await p2.locator('.opt.selected').count(), 1, 'only the latest choice stays selected');
+    assert.equal(await p2.locator('[data-opt][disabled]').count(), 0);
+    if (i === 0) await shot(p2, 'player-changed-choice');
     if (i === 0) await shot(host, 'host-question');
-    await p1.getByText('You got it right').waitFor({ timeout: LIMIT + 8000 });
-    await p2.getByText('You got it right').waitFor({ timeout: 5000 });
+    await p1.getByText('Your answer is saved').waitFor({ timeout: LIMIT + 8000 });
     await p3.getByText('No answer').waitFor({ timeout: 5000 });
-    assert.equal(await p1.getByText('Top players').count(), 0, 'no scores during play outside the survey');
-    assert.equal(await p1.getByText('Your total').count(), 0, 'no scores during play outside the survey');
+    for (const pg of [p1, p2, p3]) {
+      for (const hidden of ['Top players', 'Your total', 'right', 'wrong']) {
+        assert.equal(await pg.getByText(hidden).count(), 0, `nothing about "${hidden}" before the final screen`);
+      }
+    }
     if (i === 0) {
       assert.equal(await host.getByText('Top players').count(), 0, 'the host screen hides scores too');
+      assert.equal(await host.locator('.answer').count(), 0, 'the host screen hides the answer too');
       const gap = Date.now() - started;
       console.log(`  question 1 moved to results after ${gap} ms (limit ${LIMIT})`);
       assert.ok(gap >= LIMIT - 200, 'the question stayed open for the full time even though players had answered');
@@ -146,8 +149,8 @@ async function quickRound(browser, host) {
   const names = await host.locator('.board li span').allTextContents();
   assert.deepEqual(names, ['1. Fast', '2. Rechooser', '3. Sleeper']);
   const pts = (await host.locator('.board li b').allTextContents()).map(Number);
-  assert.ok(pts[0] > pts[1], 'the first-try player beats the re-chooser');
-  assert.ok(pts[1] > 0, 're-choosing still earns points');
+  assert.ok(pts[0] > pts[1], 'the player who chose sooner beats the one who changed later');
+  assert.ok(pts[1] >= 5000, 'a changed answer that ends up right earns the points');
   assert.equal(pts[2], 0, 'no answers earns nothing');
 
   // A player can leave the finished game and is not stuck in it.
@@ -183,30 +186,31 @@ async function surveyRound(browser, host) {
     const wrongs = Object.keys(k).filter((o) => k[o] === 0).map((o) => o.slice(1));
     assert.ok(wrongs.length >= 2, 'at least 2 wrong answers');
     assert.equal(rights.reduce((s, o) => s + k[`o${o}`], 0), 100);
-    const allPeople = Object.values(k);
     const topThree = rights.slice(0, 3);
     const best = topThree.reduce((s, o) => s + k[`o${o}`], 0);
     for (const o of topThree) {
       await p1.locator(`[data-opt="${o}"]`).click();
-      await p1.locator(`[data-opt="${o}"].right`).waitFor();
+      await p1.locator(`[data-opt="${o}"].selected`).waitFor();
     }
-    await p1.getByText(`Done · ${best} of 100 people`).waitFor();
-    for (const o of topThree) {
-      const n = k[`o${o}`];
-      await p1.locator(`[data-opt="${o}"] .people`).getByText(`Rank ${peopleRank(n, allPeople)} · ${n} / 100`).waitFor();
-    }
-    if (i === 0) await shot(p1, 'survey-all-found');
-    // Two wrong and one right uses all three picks. The rest then lock.
+    await p1.getByText('3 of 3 chosen').waitFor();
+    assert.equal(await p1.locator('.opt.right, .opt.wrong, .people').count(), 0, 'no right, wrong or counts during the question');
+    if (i === 0) await shot(p1, 'survey-three-chosen');
+    // A fourth choice is refused, and a choice can be unselected and replaced.
     for (const o of [wrongs[0], wrongs[1], rights[3]]) {
       await p2.locator(`[data-opt="${o}"]`).click();
-      await p2.locator(`[data-opt="${o}"]:is(.right,.wrong)`).waitFor();
+      await p2.locator(`[data-opt="${o}"].selected`).waitFor();
     }
-    assert.equal(await p2.locator('[data-opt]:not([disabled])').count(), 0, 'three picks used, the rest are locked');
+    await p2.locator(`[data-opt="${rights[0]}"]`).click();
+    await p2.getByText('You already chose 3').waitFor();
+    assert.equal(await p2.locator('.opt.selected').count(), 3);
+    await p2.locator(`[data-opt="${wrongs[1]}"]`).click();
+    await p2.getByText('2 of 3 chosen').waitFor();
+    await p2.locator(`[data-opt="${rights[2]}"]`).click();
+    await p2.locator(`[data-opt="${rights[2]}"].selected`).waitFor();
     expected += best;
-    expected2 += k[`o${rights[3]}`];
+    expected2 += k[`o${rights[3]}`] + k[`o${rights[2]}`];
     await p1.getByText('Top players').waitFor({ timeout: LIMIT + 8000 });
-    if (i === 0) console.log(`  everyone finished, so results came after ${Date.now() - shownAt} ms (limit ${LIMIT})`);
-    assert.ok(Date.now() - shownAt < LIMIT, 'the question ends early once everyone has finished');
+    if (i === 0) console.log(`  survey results came after ${Date.now() - shownAt} ms (limit ${LIMIT})`);
     const ranksShown = await p1.locator('.survey .rk').allTextContents();
     assert.equal(ranksShown.length, total);
     assert.deepEqual(ranksShown.slice(0, 3), ['1', '2', '3'], 'results list answers in rank order');

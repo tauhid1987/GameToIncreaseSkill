@@ -1,4 +1,4 @@
-import { dbRef, get, set, onValue, serverTimestamp, serverNow, playerSignIn } from './fb.js';
+import { dbRef, get, set, update, remove, onValue, serverTimestamp, serverNow, playerSignIn } from './fb.js';
 import { esc, leaderboard, orderedAttempts, rankedAnswers, SURVEY_PICKS, SURVEY_PEOPLE, LIMIT_MS } from './core.js';
 
 const app = document.getElementById('app');
@@ -13,9 +13,6 @@ let players = {};
 let scores = {};
 let reveal = {};
 let mine = {};            // my attempts: { q0: { o1: { at } } }
-let values = {};          // what each option I picked was worth: { q0: { o1: 0 } }
-let ranks = {};           // survey rank of each option I picked: { q0: { o1: 2 } }
-let busy = false;
 let notice = '';
 let unsubscribe = [];
 
@@ -85,16 +82,6 @@ async function join(p, name) {
 
 async function loadMyAttempts() {
   mine = (await get(game(`attempts/${uid}`))).val() || {};
-  await Promise.all(Object.entries(mine).flatMap(([q, opts]) => Object.keys(opts).map((o) => fetchValue(q, o))));
-}
-
-async function fetchValue(q, o) {
-  const [v, r] = await Promise.all([
-    get(game(`key/${q}/${o}`)),
-    isSurvey() ? get(game(`ranks/${q}/${o}`)) : null,
-  ]);
-  values[q] = { ...values[q], [o]: v.val() || 0 };
-  if (r) ranks[q] = { ...ranks[q], [o]: r.val() || 0 };
 }
 
 function listen() {
@@ -112,7 +99,7 @@ function leaveGame() {
   const name = loadSaved()?.name || '';
   localStorage.removeItem(SAVE_KEY);
   history.replaceState(null, '', location.pathname);
-  pin = null; state = null; meta = null; players = {}; scores = {}; reveal = {}; mine = {}; values = {}; ranks = {};
+  pin = null; state = null; meta = null; players = {}; scores = {}; reveal = {}; mine = {};
   joinForm('', '', name);
 }
 
@@ -120,63 +107,66 @@ const isSurvey = () => meta?.type === 'survey';
 const qKey = () => `q${state.idx}`;
 const myPicks = () => orderedAttempts(mine[qKey()]);
 
-function isLocked() {
-  const picks = myPicks();
-  if (isSurvey()) return picks.length >= SURVEY_PICKS;
-  return picks.some((a) => values[qKey()]?.[`o${a.opt}`] > 0);
-}
-
+// Tapping only records a choice. Nothing tells the player if it is right until the question ends.
 async function pick(j) {
-  if (busy || state?.phase !== 'question' || isLocked() || mine[qKey()]?.[`o${j}`]) return;
+  if (state?.phase !== 'question') return;
   const q = qKey();
-  busy = true;
-  try {
-    await set(game(`attempts/${uid}/${q}/o${j}`), { at: serverTimestamp() });
-    mine[q] = { ...mine[q], [`o${j}`]: { at: serverNow() } };
-    await fetchValue(q, `o${j}`);
-  } catch {
-    notice = 'Time is up for this question.';
+  const opt = `o${j}`;
+  const before = mine[q] || {};
+  let write;
+  if (isSurvey()) {
+    if (before[opt]) {
+      const { [opt]: dropped, ...rest } = before;
+      mine[q] = rest;
+      write = remove(game(`attempts/${uid}/${q}/${opt}`));
+    } else if (Object.keys(before).length >= SURVEY_PICKS) {
+      notice = `You already chose ${SURVEY_PICKS}. Tap a chosen answer to unselect it first.`;
+      render();
+      return;
+    } else {
+      mine[q] = { ...before, [opt]: { at: serverNow() } };
+      write = set(game(`attempts/${uid}/${q}/${opt}`), { at: serverTimestamp() });
+    }
+  } else {
+    if (before[opt]) return;
+    mine[q] = { [opt]: { at: serverNow() } };
+    const changes = { [opt]: { at: serverTimestamp() } };
+    Object.keys(before).forEach((old) => { changes[old] = null; });
+    write = update(game(`attempts/${uid}/${q}`), changes);
   }
-  busy = false;
-  if (state?.phase === 'question' && qKey() === q) render();
+  notice = '';
+  render();
+  try {
+    await write;
+  } catch {
+    mine[q] = before;
+    notice = 'Time is up for this question.';
+    if (state?.phase === 'question' && qKey() === q) render();
+  }
 }
 
 function optionButton(text, j) {
-  const q = qKey();
-  const picked = !!mine[q]?.[`o${j}`];
-  const value = values[q]?.[`o${j}`];
-  const right = picked && value > 0;
-  const wrong = picked && value === 0;
-  const off = picked || isLocked();
-  const rank = ranks[q]?.[`o${j}`];
-  const tag = isSurvey() && picked && value !== undefined
-    ? `<b class="people">${right ? `Rank ${rank} · ` : ''}${value} / ${SURVEY_PEOPLE}</b>`
-    : '';
-  const mark = right ? '✓' : wrong ? '✕' : LETTERS[j];
-  return `<button class="opt ${right ? 'right' : ''} ${wrong ? 'wrong' : ''}" data-opt="${j}" ${off ? 'disabled' : ''}>
-    <span class="mark">${mark}</span><span class="txt">${esc(text)}</span>${tag}</button>`;
+  const chosen = !!mine[qKey()]?.[`o${j}`];
+  return `<button class="opt ${chosen ? 'selected' : ''}" data-opt="${j}" aria-pressed="${chosen}">
+    <span class="mark">${chosen ? '●' : LETTERS[j]}</span><span class="txt">${esc(text)}</span></button>`;
 }
 
 function questionHint() {
-  const picks = myPicks();
   if (notice) return notice;
+  const count = myPicks().length;
   if (isSurvey()) {
-    const left = SURVEY_PICKS - picks.length;
-    const got = picks.reduce((sum, a) => sum + (values[qKey()]?.[`o${a.opt}`] || 0), 0);
-    return left > 0 ? `${left} pick${left > 1 ? 's' : ''} left · ${got} of ${SURVEY_PEOPLE} people so far` : `Done · ${got} of ${SURVEY_PEOPLE} people. Next question is coming.`;
+    return count ? `${count} of ${SURVEY_PICKS} chosen. Tap a chosen answer to unselect it.` : `Choose up to ${SURVEY_PICKS} answers.`;
   }
-  if (isLocked()) return 'Correct! Next question is coming.';
-  return picks.length ? 'Wrong. Choose again, quickly.' : 'Choose the right answer.';
+  return count ? 'Selected. You can change it until time runs out.' : 'Choose one answer.';
 }
 
 function resultBody(q, r) {
   const ranked = rankedAnswers(r.o, r.val);
   const myOpts = mine[q] || {};
-  if (isSurvey()) {
+  {
     return `<ol class="survey">${ranked.map((x) => `<li class="${x.people ? 'hit' : 'miss'} ${myOpts[`o${x.i}`] ? 'mine' : ''}">
       <span class="rk">${x.rank || '–'}</span><span class="ans">${esc(x.text)}</span><b>${x.people} / ${SURVEY_PEOPLE}</b></li>`).join('')}</ol>`;
   }
-  return `<p class="answer">✓ ${esc(ranked[0].text)}</p>`;
 }
 
 function render() {
@@ -200,16 +190,13 @@ function render() {
   if (state.phase === 'results') {
     const r = reveal[qKey()];
     if (!r) return;
-    // Only the survey shows scores during play. Other categories show them at the end.
+    // A quick round reveals nothing until the final screen.
     if (!isSurvey()) {
-      const picks = orderedAttempts(mine[qKey()]);
-      const right = picks.some((a) => r.val[a.opt] > 0);
-      const verdict = right ? '<p class="verdict okay">✓ You got it right</p>'
-        : picks.length ? '<p class="verdict nope">✕ You got it wrong</p>'
-          : '<p class="verdict mute">No answer</p>';
-      app.innerHTML = `<div class="card center"><h2>${esc(r.q)}</h2>${verdict}${resultBody(qKey(), r)}</div>`;
+      app.innerHTML = `<div class="card center"><h2>Next question…</h2>
+        <p class="mute">${myPicks().length ? 'Your answer is saved.' : 'No answer.'}</p></div>`;
       return;
     }
+
     const place = leaderboard(players, scores).findIndex((p) => p.id === uid) + 1;
     app.innerHTML = `<div class="card"><h2>${esc(r.q)}</h2>${resultBody(qKey(), r)}
       <p class="center mute">Your total: <b>${scores[uid]?.s || 0}</b> · Rank ${place || '-'}</p></div>
@@ -252,5 +239,5 @@ setInterval(tick, 200);
 
 app.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-opt]');
-  if (btn && !btn.disabled) pick(Number(btn.dataset.opt));
+  if (btn) pick(Number(btn.dataset.opt));
 });

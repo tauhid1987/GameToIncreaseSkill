@@ -29,7 +29,6 @@ async function seed({ phase = 'question', idx = 0, startedAgo = 1000 } = {}) {
           meta: { hostUid: 'host', title: 'T', type: 'mcq', total: 2, limitMs: 15000 },
           questions: [{ q: 'Q1', o: ['a', 'b'] }, { q: 'Q2', o: ['c', 'd'] }],
           key: { q0: { o0: 1, o1: 0 }, q1: { o0: 0, o1: 1 } },
-          ranks: { q0: { o0: 1, o1: 0 } },
           state: { phase, idx, startedAt: Date.now() - startedAgo, current: { q: 'Q1', o: ['a', 'b'] } },
           players: { p1: { name: 'One' }, p2: { name: 'Two' } },
         },
@@ -53,21 +52,23 @@ test('players cannot read upcoming questions or the whole game', async () => {
   await assertFails(get(ref(db('p1'), 'games')));
 });
 
-test('after picking, a player can read that option only', async () => {
+test('picking an answer never lets a player read whether it is right', async () => {
   const d = db('p1');
   await assertSucceeds(set(g(d, 'attempts/p1/q0/o1'), at()));
-  await assertSucceeds(get(g(d, 'key/q0/o1')));
-  await assertFails(get(g(d, 'key/q0/o0')));
-  await assertSucceeds(get(g(d, 'ranks/q0/o1')));
-  await assertFails(get(g(d, 'ranks/q0/o0')));
-  await assertFails(get(g(d, 'ranks')));
+  await assertFails(get(g(d, 'key/q0/o1')));
+  await assertFails(get(g(d, 'key/q0')));
 });
 
-test('re-choosing: a second option is allowed, the same option is not', async () => {
+test('a player can change an answer until time is up, and not after', async () => {
   const d = db('p1');
   await assertSucceeds(set(g(d, 'attempts/p1/q0/o1'), at()));
-  await assertSucceeds(set(g(d, 'attempts/p1/q0/o0'), at()));
-  await assertFails(set(g(d, 'attempts/p1/q0/o1'), at()));
+  await assertSucceeds(update(g(d, 'attempts/p1/q0'), { o0: { at: serverTimestamp() }, o1: null }));
+  await assertSucceeds(remove(g(d, 'attempts/p1/q0/o0')));
+  await assertSucceeds(set(g(d, 'attempts/p1/q0/o1'), at()));
+  await env.withSecurityRulesDisabled((ctx) => update(ref(ctx.database(), `games/${PIN}/state`), { startedAt: Date.now() - 16000 }));
+  await assertFails(remove(g(d, 'attempts/p1/q0/o1')));
+  await assertFails(update(g(d, 'attempts/p1/q0'), { o0: { at: serverTimestamp() }, o1: null }));
+  await env.withSecurityRulesDisabled((ctx) => update(ref(ctx.database(), `games/${PIN}/state`), { startedAt: Date.now(), phase: 'results' }));
   await assertFails(remove(g(d, 'attempts/p1/q0/o1')));
 });
 

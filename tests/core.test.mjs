@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   parseImport, validateQuestion, pickQuestions, buildGame, scoreQuestion, totalScores, leaderboard,
-  buildHistory, historyCsv, listSets, nextSet, questionsInSet, hasFinished, peopleRank, rankedAnswers, findDuplicates, questionKey, SURVEY_LIMIT_MS, CATEGORIES, QUESTIONS_PER_GAME, LIMIT_MS,
+  buildHistory, historyCsv, listSets, nextSet, questionsInSet, peopleRank, rankedAnswers, findDuplicates, questionKey, SURVEY_LIMIT_MS, CATEGORIES, QUESTIONS_PER_GAME, LIMIT_MS,
 } from '../docs/js/core.js';
 
 const sample = (f) => readFileSync(new URL(`../samples/${f}`, import.meta.url), 'utf8');
@@ -73,8 +73,9 @@ test('quick round: speed and wrong picks both lower the points', () => {
   assert.equal(scoreQuestion('mcq', { o1: { at: 1000 } }, v, 1000).points, 1000);
   assert.equal(scoreQuestion('mcq', { o1: { at: 8500 } }, v, 1000).points, 750);
   assert.equal(scoreQuestion('mcq', { o1: { at: 16000 } }, v, 1000).points, 500);
-  assert.equal(scoreQuestion('mcq', { o0: { at: 1000 }, o1: { at: 1000 + 1 } }, v, 1000).points, 750);
-  assert.equal(scoreQuestion('mcq', { o0: { at: 1000 }, o2: { at: 1001 }, o1: { at: 1002 } }, v, 1000).points, 500);
+  // Only the last answer chosen counts, and changing it has no penalty beyond the time taken.
+  assert.equal(scoreQuestion('mcq', { o0: { at: 1000 }, o1: { at: 8500 } }, v, 1000).points, 750);
+  assert.equal(scoreQuestion('mcq', { o1: { at: 1000 }, o0: { at: 2000 } }, v, 1000).points, 0);
   assert.equal(scoreQuestion('mcq', { o0: { at: 1000 } }, v, 1000).points, 0);
   assert.equal(scoreQuestion('mcq', undefined, v, 1000).points, 0);
 });
@@ -96,11 +97,9 @@ test('survey answers are ranked by how many of the 100 people gave them', () => 
   assert.deepEqual(people.map((p) => peopleRank(p, people)), [3, 0, 1, 0, 2]);
   assert.deepEqual(rankedAnswers(['a', 'b', 'c', 'd', 'e'], people).slice(0, 3).map((x) => [x.rank, x.text, x.people]), [[1, 'c', 50], [2, 'e', 30], [3, 'a', 20]]);
   assert.equal(peopleRank(40, [40, 40, 20, 0, 0]), 1, 'equal counts share a rank');
-  const { questions, key, ranks } = buildGame([{ q: 'x', o: ['top', 'mid', 'low', 'no1', 'no2'], p: [50, 30, 20, 0, 0] }], 'survey');
+  const { questions, key } = buildGame([{ q: 'x', o: ['top', 'mid', 'low', 'no1', 'no2'], p: [50, 30, 20, 0, 0] }], 'survey');
   questions[0].o.forEach((text, shown) => {
-    const expected = { top: 1, mid: 2, low: 3, no1: 0, no2: 0 }[text];
-    assert.equal(ranks.q0[`o${shown}`], expected);
-    assert.ok(key.q0[`o${shown}`] >= 0);
+    assert.equal(key.q0[`o${shown}`], { top: 50, mid: 30, low: 20, no1: 0, no2: 0 }[text]);
   });
 });
 
@@ -109,7 +108,6 @@ test('with 3 picks and 6-8 answers, the top 3 give the best score', () => {
   const at = { at: LIMIT_MS };
   assert.equal(scoreQuestion('survey', { o0: at, o1: at, o2: at }, v, 0).points, 80);
   assert.equal(scoreQuestion('survey', { o0: at, o3: at, o4: at }, v, 0).points, 60);
-  assert.equal(hasFinished('survey', { o0: at, o5: at, o6: at }, v), true);
 });
 
 test('more people found beats a faster but smaller find', () => {
@@ -129,16 +127,6 @@ test('import sorts questions into sets, and sets list in natural order', () => {
   questionsInSet(questions, 'Set 2').forEach((q) => { q.used = 1; });
   assert.equal(nextSet(questions), 'Set 10', 'the least-played ready set is next');
   assert.equal(parseImport('Q?\n*a\nb', 'mcq', 'Mine').questions[0].set, 'Mine');
-});
-
-test('a player has finished when nothing is left to do', () => {
-  const mcq = { o0: 0, o1: 1, o2: 0 };
-  assert.equal(hasFinished('mcq', undefined, mcq), false);
-  assert.equal(hasFinished('mcq', { o0: { at: 1 } }, mcq), false, 'wrong so far: may still re-choose');
-  assert.equal(hasFinished('mcq', { o1: { at: 1 } }, mcq), true);
-  const survey = { o0: 50, o1: 30, o2: 20, o3: 0, o4: 0 };
-  assert.equal(hasFinished('survey', { o0: { at: 1 }, o3: { at: 2 } }, survey), false);
-  assert.equal(hasFinished('survey', { o0: { at: 1 }, o3: { at: 2 }, o4: { at: 3 } }, survey), true);
 });
 
 test('highest total wins, and less time breaks a tie', () => {
