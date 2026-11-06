@@ -1,0 +1,61 @@
+# Sample questions for testing. Import under General Knowledge, or replace them.
+
+What is the capital of Bangladesh?
+Chattogram
+*Dhaka
+Khulna
+Sylhet
+
+In which year did Bangladesh become independent?
+1947
+1952
+*1971
+1975
+
+What is the national flower of Bangladesh?
+*Shapla
+Rose
+Jasmine
+Sunflower
+
+Which is the largest planet in our solar system?
+Saturn
+*Jupiter
+Neptune
+Earth
+
+How many days are in a leap year?
+365
+*366
+364
+367
+
+What is the chemical symbol for gold?
+Ag
+Gd
+*Au
+Go
+
+Which is the largest mammal on Earth?
+Elephant
+Giraffe
+*Blue whale
+Hippopotamus
+
+Which is the smallest country in the world by area?
+Monaco
+Malta
+San Marino
+*Vatican City
+
+Who painted the Mona Lisa?
+*Leonardo da Vinci
+Michelangelo
+Pablo Picasso
+Vincent van Gogh
+
+Which gas do plants absorb for photosynthesis?
+Oxygen
+Nitrogen
+Hydrogen
+*Carbon dioxide

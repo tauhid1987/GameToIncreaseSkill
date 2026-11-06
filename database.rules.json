@@ -1,0 +1,70 @@
+{
+  "rules": {
+    "hosts": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "hostGames": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid && root.child('hosts').child(auth.uid).val() === true",
+        ".write": "auth != null && auth.uid === $uid && root.child('hosts').child(auth.uid).val() === true"
+      }
+    },
+    "bank": {
+      ".read": "auth != null && root.child('hosts').child(auth.uid).val() === true",
+      ".write": "auth != null && root.child('hosts').child(auth.uid).val() === true"
+    },
+    "history": {
+      ".read": "auth != null && root.child('hosts').child(auth.uid).val() === true",
+      ".write": "auth != null && root.child('hosts').child(auth.uid).val() === true"
+    },
+    "games": {
+      "$pin": {
+        ".read": "auth != null && data.child('meta/hostUid').val() === auth.uid",
+        ".write": "auth != null && $pin.matches(/^[0-9]{6}$/) && root.child('hosts').child(auth.uid).val() === true && (!data.exists() || data.child('meta/hostUid').val() === auth.uid) && (!newData.exists() || newData.child('meta/hostUid').val() === auth.uid)",
+        "meta": { ".read": "auth != null" },
+        "state": { ".read": "auth != null" },
+        "reveal": { ".read": "auth != null" },
+        "scores": { ".read": "auth != null" },
+        "players": {
+          ".read": "auth != null",
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && root.child('games').child($pin).child('meta').exists()",
+            ".validate": "newData.hasChildren(['name']) && newData.child('name').isString() && newData.child('name').val().length >= 1 && newData.child('name').val().length <= 24",
+            "name": { ".validate": true },
+            "$other": { ".validate": false }
+          }
+        },
+        "key": {
+          "$q": {
+            "$o": {
+              ".read": "auth != null && root.child('games').child($pin).child('attempts').child(auth.uid).child($q).child($o).exists()"
+            }
+          }
+        },
+        "ranks": {
+          "$q": {
+            "$o": {
+              ".read": "auth != null && root.child('games').child($pin).child('attempts').child(auth.uid).child($q).child($o).exists()"
+            }
+          }
+        },
+        "attempts": {
+          "$uid": {
+            ".read": "auth != null && auth.uid === $uid",
+            "$q": {
+              "$o": {
+                ".write": "auth != null && auth.uid === $uid && !data.exists() && newData.exists() && root.child('games').child($pin).child('players').child(auth.uid).exists() && root.child('games').child($pin).child('state/phase').val() === 'question' && $q === 'q' + root.child('games').child($pin).child('state/idx').val() && now <= root.child('games').child($pin).child('state/startedAt').val() + root.child('games').child($pin).child('meta/limitMs').val() + 500",
+                ".validate": "newData.hasChildren(['at']) && newData.child('at').val() === now && root.child('games').child($pin).child('key').child($q).child($o).exists()",
+                "at": { ".validate": true },
+                "$other": { ".validate": false }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

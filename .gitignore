@@ -1,0 +1,6 @@
+node_modules/
+*.log
+.firebase/
+test-results/
+# The question packs hold the answers, and a public repo would show them to players.
+questions/
