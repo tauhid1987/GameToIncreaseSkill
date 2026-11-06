@@ -110,7 +110,7 @@ button.opt:disabled { opacity: 1; }
 .qitem { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .qitem > div:first-child { flex: 1 1 260px; }
 .review { padding: 8px 0; border-bottom: 1px solid var(--line); }
-.review .answer { color: var(--right); font-weight: 600; margin-top: 4px; }
+.review .answer { font-size: 1rem; font-weight: 600; margin-top: 4px; }
 .picks li { padding-left: 4px; }
 details { padding: 6px 0; }
 summary { cursor: pointer; }
