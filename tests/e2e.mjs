@@ -104,6 +104,8 @@ async function quickRound(browser, host) {
   await host.getByRole('button', { name: /Start \(3 joined\)/ }).click();
 
   const started = Date.now();
+  let lastRightText = '';
+  let lastWrongText = '';
   for (let i = 0; i < 10; i++) {
     await Promise.all([p1, p2, p3, host].map((pg) => waitForQuestion(pg, i + 1)));
     const k = key[`q${i}`];
@@ -117,6 +119,13 @@ async function quickRound(browser, host) {
     await p2.getByText('You can change it until time runs out').waitFor();
     assert.equal(await p2.locator('.opt.right, .opt.wrong').count(), 0, 'no right or wrong during the question');
     if (i === 0) await shot(p2, 'player-first-choice');
+    // The third player answers only the last question, and gets it wrong.
+    if (i === 9) {
+      lastRightText = await p3.locator(`[data-opt="${right}"] .txt`).textContent();
+      lastWrongText = await p3.locator(`[data-opt="${wrong}"] .txt`).textContent();
+      await p3.locator(`[data-opt="${wrong}"]`).click();
+      await p3.locator(`[data-opt="${wrong}"].selected`).waitFor();
+    }
     // Choosing again unselects the first one, and every answer stays tappable.
     await p2.locator(`[data-opt="${right}"]`).click();
     await p2.locator(`[data-opt="${right}"].selected`).waitFor();
@@ -125,7 +134,7 @@ async function quickRound(browser, host) {
     if (i === 0) await shot(p2, 'player-changed-choice');
     if (i === 0) await shot(host, 'host-question');
     await p1.getByText('Your answer is saved').waitFor({ timeout: LIMIT + 8000 });
-    await p3.getByText('No answer').waitFor({ timeout: 5000 });
+    await p3.getByText(i === 9 ? 'Your answer is saved' : 'No answer').waitFor({ timeout: 5000 });
     for (const pg of [p1, p2, p3]) {
       for (const hidden of ['Top players', 'Your total', 'right', 'wrong']) {
         assert.equal(await pg.getByText(hidden).count(), 0, `nothing about "${hidden}" before the final screen`);
@@ -145,6 +154,15 @@ async function quickRound(browser, host) {
   console.log(`  full game took ${(elapsed / 1000).toFixed(1)} s with nobody pressing anything on the host`);
   await shot(p1, 'player-final');
   await shot(host, 'host-final');
+
+  // The final screen gives the right answer only where the player missed it.
+  assert.equal(await p1.locator('.review .answer').count(), 0, 'all right: no extra answer lines');
+  assert.equal(await p3.locator('.review .answer').count(), 10, 'wrong or unanswered: the right answer shows');
+  const lastReview = p3.locator('.review').last();
+  assert.ok((await lastReview.locator('.nope').textContent()).includes(lastWrongText), 'their wrong answer stays visible');
+  assert.equal(await lastReview.locator('.answer').textContent(), `Right answer: ${lastRightText}`);
+  await p3.locator('.review').first().locator('.answer').scrollIntoViewIfNeeded();
+  await shot(p3, 'player-final-right-answers');
 
   const names = await host.locator('.board li span').allTextContents();
   assert.deepEqual(names, ['1. Fast', '2. Rechooser', '3. Sleeper']);
@@ -218,6 +236,11 @@ async function surveyRound(browser, host) {
     if (i === 0) await shot(p1, 'survey-results');
   }
   await host.getByText('Final leaderboard').waitFor({ timeout: 15000 });
+  await Promise.all([p1, p2].map((pg) => pg.getByText('Your answers').waitFor({ timeout: 15000 })));
+  assert.equal(await p1.locator('.review .answer').count(), 0, 'found the top 3: no extra answer lines');
+  assert.equal(await p2.locator('.review .answer').count(), 10, 'missed the top 3: they are shown');
+  assert.match(await p2.locator('.review .answer').first().textContent(), /^Top 3: .+ \(\d+\), .+ \(\d+\), .+ \(\d+\)$/);
+  await shot(p2, 'survey-final-top-answers');
   const pts = (await host.locator('.board li b').allTextContents()).map(Number);
   assert.ok(pts[0] >= expected && pts[0] <= expected * 1.2, `marks plus timing: ${pts[0]}`);
   assert.ok(pts[1] >= expected2 && pts[1] <= expected2 * 1.2, `marks plus timing: ${pts[1]}`);

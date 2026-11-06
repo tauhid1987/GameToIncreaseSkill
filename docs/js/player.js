@@ -223,8 +223,21 @@ function reviewHtml() {
       const v = r.val[a.opt] || 0;
       return `<span class="${v ? 'okay' : 'nope'}">${v ? '✓' : '✕'} ${esc(r.o[a.opt])}${isSurvey() ? ` (${v})` : ''}</span>`;
     }).join(' ');
-    return `<div class="review"><b>Q${Number(q.slice(1)) + 1}.</b> ${esc(r.q)}<br>${picks || '<span class="mute">No answer</span>'}</div>`;
+    return `<div class="review"><b>Q${Number(q.slice(1)) + 1}.</b> ${esc(r.q)}<br>${picks || '<span class="mute">No answer</span>'}${missedAnswer(q, r)}</div>`;
   }).join('');
+}
+
+// Shown on the final screen only, and only when the player missed the answer.
+function missedAnswer(q, r) {
+  const chosen = mine[q] || {};
+  const ranked = rankedAnswers(r.o, r.val).filter((x) => x.people > 0);
+  if (isSurvey()) {
+    const top = ranked.slice(0, SURVEY_PICKS);
+    if (top.every((x) => chosen[`o${x.i}`])) return '';
+    return `<div class="answer">Top ${top.length}: ${top.map((x) => `${esc(x.text)} (${x.people})`).join(', ')}</div>`;
+  }
+  if (ranked.some((x) => chosen[`o${x.i}`])) return '';
+  return `<div class="answer">Right answer: ${ranked.map((x) => esc(x.text)).join(', ')}</div>`;
 }
 
 function tick() {

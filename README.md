@@ -14,6 +14,7 @@ It is a static site (GitHub Pages) with Firebase Realtime Database. There is no 
 | Choosing | One answer. Tap another to change it until time runs out; the last one counts. Nothing shows if it is right | Up to 3 answers. Tap a chosen one to unselect it. Nothing shows if it is right until the question ends |
 | After the question | Moves on with no answer shown. Right answers appear on the final screen | All answers show their rank and how many of the 100 people gave them, such as "1 · 50 / 100" |
 | Points | 500 + up to 500 for speed, timed from the last answer chosen | Marks plus timing: the people behind each right answer, plus up to 20% for picking it quickly. With 3 picks, finding the top 3 scores best |
+| Final screen | Each player sees their answers. The right answer shows under any they missed | Same, with the top 3 and their counts |
 | Scores during play | Hidden until the final leaderboard | Shown after every question |
 | Winner | Highest total. On a tie, the player who took less time | Same |
 
