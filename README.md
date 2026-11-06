@@ -10,6 +10,7 @@ It is a static site (GitHub Pages) with Firebase Realtime Database. There is no 
 |---|---|---|
 | Questions per game | 10 | 10 |
 | Time per question | 15 seconds, then it moves on by itself | 20 seconds, the same way |
+| When everyone has answered | Moves on 3 seconds later, or when time runs out if that is sooner | The same, once every player has chosen 3 answers |
 | Answers | 2 to 4 | 6 to 8: ranked answers with the top 3 clearly highest, plus at least 2 close-sounding wrong |
 | Choosing | One answer. Tap another to change it until time runs out; the last one counts. Nothing shows if it is right | Up to 3 answers. Tap a chosen one to unselect it. Nothing shows if it is right until the question ends |
 | After the question | Moves on with no answer shown. Right answers appear on the final screen | All answers show their rank and how many of the 100 people gave them, such as "1 · 50 / 100" |

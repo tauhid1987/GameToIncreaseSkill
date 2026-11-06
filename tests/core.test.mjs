@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   parseImport, validateQuestion, pickQuestions, buildGame, scoreQuestion, totalScores, leaderboard,
-  buildHistory, historyCsv, listSets, nextSet, questionsInSet, peopleRank, rankedAnswers, findDuplicates, questionKey, SURVEY_LIMIT_MS, CATEGORIES, QUESTIONS_PER_GAME, LIMIT_MS,
+  buildHistory, historyCsv, listSets, nextSet, questionsInSet, peopleRank, rankedAnswers, findDuplicates, everyoneAnswered, questionKey, SURVEY_LIMIT_MS, CATEGORIES, QUESTIONS_PER_GAME, LIMIT_MS,
 } from '../docs/js/core.js';
 
 const sample = (f) => readFileSync(new URL(`../samples/${f}`, import.meta.url), 'utf8');
@@ -135,6 +135,17 @@ test('highest total wins, and less time breaks a tie', () => {
   const attempts = { a: { q0: { o0: { at: 5000 } } }, b: { q0: { o0: { at: 2000 } } }, c: { q0: { o1: { at: 1000 } } } };
   const scores = totalScores('survey', Object.keys(players), attempts, key, { q0: 1000 });
   assert.deepEqual(leaderboard(players, scores).map((p) => p.name), ['Bob', 'Ann', 'Cy']);
+});
+
+test('everyone has answered only when every player has finished', () => {
+  const one = { o0: { at: 1 } };
+  const three = { o0: { at: 1 }, o1: { at: 2 }, o2: { at: 3 } };
+  assert.equal(everyoneAnswered('mcq', ['a', 'b'], { a: { q0: one }, b: { q0: one } }, 'q0'), true);
+  assert.equal(everyoneAnswered('mcq', ['a', 'b'], { a: { q0: one } }, 'q0'), false, 'one player has not answered');
+  assert.equal(everyoneAnswered('mcq', ['a'], { a: { q0: one } }, 'q1'), false, 'an answer to the last question does not count');
+  assert.equal(everyoneAnswered('mcq', [], {}, 'q0'), false, 'no players');
+  assert.equal(everyoneAnswered('survey', ['a'], { a: { q0: one } }, 'q0'), false, 'the survey needs all 3 picks');
+  assert.equal(everyoneAnswered('survey', ['a'], { a: { q0: three } }, 'q0'), true);
 });
 
 test('a game stopped early keeps only the questions played', () => {

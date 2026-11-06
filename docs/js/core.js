@@ -5,6 +5,7 @@ export const LIMIT_MS = 15000;        // time to answer each question
 export const SURVEY_LIMIT_MS = 20000; // the survey has more answers to read
 export const REVEAL_MS = 3000;        // how long the answer stays on screen before auto-next
 export const QUICK_GAP_MS = 1500;     // pause between quick-round questions, with no answer shown
+export const ALL_ANSWERED_WAIT_MS = 3000; // once everyone has answered, time left to change an answer
 export const SURVEY_MIN_OPTIONS = 6;
 export const SURVEY_MAX_OPTIONS = 8;
 export const SURVEY_MIN_WRONG = 2;
@@ -209,6 +210,13 @@ export function peopleRank(value, allValues) {
 }
 
 // A survey question's answers, most popular first, for result screens.
+// True when every player has finished question q: one answer, or all the picks in the survey.
+export function everyoneAnswered(type, playerIds, attempts, q) {
+  const needed = type === 'survey' ? SURVEY_PICKS : 1;
+  return playerIds.length > 0
+    && playerIds.every((id) => Object.keys(attempts?.[id]?.[q] || {}).length >= needed);
+}
+
 export function rankedAnswers(options, values) {
   return options
     .map((text, i) => ({ text, i, people: values[i] || 0, rank: peopleRank(values[i] || 0, values) }))

@@ -265,6 +265,71 @@ async function checkHostResume(browser, host) {
   await host.getByText('Create a game').waitFor();
 }
 
+async function checkEarlyNext(browser, host) {
+  const seconds = (from) => (Date.now() - from) / 1000;
+  const inWindow = (gap, what) => assert.ok(gap >= 2.5 && gap < 7, `${what} moved on after ${gap} s`);
+
+  // Quick round: moves on about 3 seconds after everyone answered, and an answer can still change.
+  await host.goto(`${BASE}/host.html?limit=12000&reveal=700`);
+  await host.locator('.cat', { hasText: 'General Knowledge' }).click();
+  await host.locator('#title').fill('E2E early quick');
+  await host.locator('#next').click();
+  await host.locator('.pin').waitFor();
+  const pin = await host.locator('.pin').textContent();
+  const quick = await joinGame(browser, pin, 'Early');
+  await host.getByRole('button', { name: /Start \(1 joined\)/ }).click();
+  await waitForQuestion(quick, 1);
+  await quick.locator('[data-opt="0"]').click();
+  const answered = Date.now();
+  await host.getByText('next question in 3 seconds').waitFor();
+  await quick.waitForTimeout(1000);
+  await quick.locator('[data-opt="1"]').click();
+  await quick.locator('[data-opt="1"].selected').waitFor();
+  await quick.getByText('Next question').waitFor({ timeout: 10000 });
+  const gap = seconds(answered);
+  console.log(`  quick question moved on ${gap} s after everyone answered (limit 12 s)`);
+  inWindow(gap, 'the quick question');
+  const saved = await (await fetch(`http://127.0.0.1:9000/games/${pin}/attempts.json?ns=${NS}`, { headers: { Authorization: 'Bearer owner' } })).json();
+  assert.deepEqual(Object.keys(Object.values(saved)[0].q0), ['o1'], 'the changed answer is the one saved');
+  await quick.context().close();
+  host.once('dialog', (d) => d.accept());
+  await host.getByRole('button', { name: 'End game' }).click();
+  await host.getByText('Create a game').waitFor();
+
+  // Survey: needs all 3 picks, and unselecting one cancels the wait.
+  await host.goto(`${BASE}/host.html?limit=18000&reveal=700`);
+  await host.locator('.cat', { hasText: 'জনমত' }).click();
+  await host.locator('#title').fill('E2E early survey');
+  await host.locator('#next').click();
+  await host.locator('.pin').waitFor();
+  const pin2 = await host.locator('.pin').textContent();
+  const surveyor = await joinGame(browser, pin2, 'Early2');
+  await host.getByRole('button', { name: /Start \(1 joined\)/ }).click();
+  await waitForQuestion(surveyor, 1);
+  const choose = async (o) => { await surveyor.locator(`[data-opt="${o}"]`).click(); };
+  await choose(0);
+  await choose(1);
+  await surveyor.waitForTimeout(3500);
+  assert.equal(await surveyor.getByText('Top players').count(), 0, '2 of 3 picks does not end the question');
+  await choose(2);
+  await host.getByText('next question in 3 seconds').waitFor();
+  await surveyor.waitForTimeout(1000);
+  await choose(2);
+  await surveyor.getByText('2 of 3 chosen').waitFor();
+  await surveyor.waitForTimeout(3500);
+  assert.equal(await surveyor.getByText('Top players').count(), 0, 'unselecting cancels the wait');
+  await choose(2);
+  const finished = Date.now();
+  await surveyor.getByText('Top players').waitFor({ timeout: 10000 });
+  const gap2 = seconds(finished);
+  console.log(`  survey question moved on ${gap2} s after all 3 picks (limit 18 s)`);
+  inWindow(gap2, 'the survey question');
+  await surveyor.context().close();
+  host.once('dialog', (d) => d.accept());
+  await host.getByRole('button', { name: 'End game' }).click();
+  await host.getByText('Create a game').waitFor();
+}
+
 async function main() {
   await makeHost();
   const browser = await chromium.launch();
@@ -363,6 +428,8 @@ async function main() {
   await surveyRound(browser, host);
   console.log('Host reload resumes the game');
   await checkHostResume(browser, host);
+  console.log('Next question comes early once everyone has answered');
+  await checkEarlyNext(browser, host);
 
   console.log('Event history');
   await host.goto(`${BASE}/history.html`);

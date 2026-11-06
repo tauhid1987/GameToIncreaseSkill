@@ -3,7 +3,7 @@ import {
   requireHost, hostSignOut,
 } from './fb.js';
 import {
-  CATEGORIES, QUESTIONS_PER_GAME, LIMIT_MS, SURVEY_LIMIT_MS, REVEAL_MS, QUICK_GAP_MS, categoryById, pickQuestions, buildGame,
+  CATEGORIES, QUESTIONS_PER_GAME, LIMIT_MS, SURVEY_LIMIT_MS, REVEAL_MS, QUICK_GAP_MS, ALL_ANSWERED_WAIT_MS, everyoneAnswered, categoryById, pickQuestions, buildGame,
   totalScores, leaderboard, buildHistory, listSets, nextSet, questionsInSet, rankedAnswers,
   SURVEY_PEOPLE, esc,
 } from './core.js';
@@ -28,6 +28,7 @@ let scores = {};
 let reveal = {};
 let starts = {};
 let timer = null;
+let allAnsweredAt = null;
 let unsubscribe = [];
 
 const game = (path) => dbRef(`games/${pin}/${path}`);
@@ -128,9 +129,10 @@ async function attach() {
   starts = st.val() || {};
   unsubscribe = [
     onValue(game('state'), (s) => { state = s.val(); schedule(); render(); }),
-    onValue(game('players'), (s) => { players = s.val() || {}; render(); }),
+    onValue(game('players'), (s) => { players = s.val() || {}; watchAnswers(); render(); }),
     onValue(game('attempts'), (s) => {
       attempts = s.val() || {};
+      watchAnswers();
       if (state?.phase === 'question') renderAnswered();
     }),
     onValue(game('scores'), (s) => { scores = s.val() || {}; render(); }),
@@ -149,12 +151,32 @@ function detach() {
 // The game moves itself along, so everything hangs off the current state. Reloading the page resumes it.
 function schedule() {
   clearTimeout(timer);
+  allAnsweredAt = null;
   if (!state) return;
   if (state.phase === 'question') {
-    timer = setTimeout(showResults, Math.max(0, state.startedAt + meta.limitMs + 800 - serverNow()));
+    setQuestionTimer();
+    watchAnswers();
   } else if (state.phase === 'results') {
     timer = setTimeout(nextQuestion, Math.max(0, state.revealedAt + meta.revealMs - serverNow()));
   }
+}
+
+function setQuestionTimer() {
+  clearTimeout(timer);
+  const timeUp = state.startedAt + meta.limitMs + 800;
+  const end = allAnsweredAt ? Math.min(timeUp, allAnsweredAt + ALL_ANSWERED_WAIT_MS) : timeUp;
+  timer = setTimeout(showResults, Math.max(0, end - serverNow()));
+}
+
+// Once everyone has answered, the question ends after a short wait. If someone unselects
+// an answer or a new player joins, the wait is cancelled and the timer runs on.
+function watchAnswers() {
+  if (state?.phase !== 'question') return;
+  const done = everyoneAnswered(meta.type, Object.keys(players), attempts, `q${state.idx}`);
+  if (done === !!allAnsweredAt) return;
+  allAnsweredAt = done ? serverNow() : null;
+  setQuestionTimer();
+  renderAnswered();
 }
 
 async function nextQuestion() {
@@ -227,11 +249,11 @@ async function closeGame() {
 
 // ---------- screens ----------
 
-const answeredCount = () => Object.values(attempts).filter((a) => a[`q${state.idx}`]).length;
+const answeredCount = () => Object.keys(players).filter((id) => everyoneAnswered(meta.type, [id], attempts, `q${state.idx}`)).length;
 
 function renderAnswered() {
   const el = document.getElementById('answered');
-  if (el) el.textContent = `${answeredCount()} / ${Object.keys(players).length} answered`;
+  if (el) el.textContent = `${answeredCount()} / ${Object.keys(players).length} answered${allAnsweredAt ? ` · next question in ${ALL_ANSWERED_WAIT_MS / 1000} seconds` : ''}`;
 }
 
 function boardHtml(n) {
