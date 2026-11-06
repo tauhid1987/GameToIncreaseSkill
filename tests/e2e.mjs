@@ -393,10 +393,11 @@ async function main() {
     assert.match(note, / 0 with problems/);
     assert.match(note, /: \d+ added, 0 already there/);
     await host.goto(`${BASE}/host.html`);
-    await host.locator('.cat', { hasText: 'জনমত' }).getByText('30 sets ready').waitFor();
+    await host.locator('.cat', { hasText: 'জনমত' }).getByText('50 sets ready').waitFor();
+    await host.locator('.cat', { hasText: 'Cricket' }).getByText('15 sets ready').waitFor();
     await shot(host, 'host-picker-full');
     await host.locator('.cat', { hasText: 'জনমত' }).click();
-    assert.equal(await host.locator('[data-set]:not([disabled])').count(), 30);
+    assert.equal(await host.locator('[data-set]:not([disabled])').count(), 50);
     await shot(host, 'host-sets');
   }
 
