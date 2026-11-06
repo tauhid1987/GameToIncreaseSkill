@@ -3,7 +3,7 @@ import {
   requireHost, hostSignOut,
 } from './fb.js';
 import {
-  CATEGORIES, QUESTIONS_PER_GAME, LIMIT_MS, REVEAL_MS, categoryById, pickQuestions, buildGame,
+  CATEGORIES, QUESTIONS_PER_GAME, LIMIT_MS, SURVEY_LIMIT_MS, REVEAL_MS, categoryById, pickQuestions, buildGame,
   totalScores, leaderboard, buildHistory, listSets, nextSet, questionsInSet, hasFinished, rankedAnswers,
   SURVEY_PEOPLE, esc,
 } from './core.js';
@@ -13,7 +13,7 @@ const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
 // Shorter times are only accepted on localhost, for the automated tests.
 const params = new URLSearchParams(location.search);
-const limitMs = LOCAL && params.get('limit') ? Number(params.get('limit')) : LIMIT_MS;
+const limitOverride = LOCAL && params.get('limit') ? Number(params.get('limit')) : null;
 const revealMs = LOCAL && params.get('reveal') ? Number(params.get('reveal')) : REVEAL_MS;
 
 let uid;
@@ -98,7 +98,10 @@ async function createGame(catId, setName, title, items) {
   const built = buildGame(picked, cat.type);
   const newMeta = {
     hostUid: uid, title: title || `${cat.label} · ${setName}`, cat: catId, set: setName, type: cat.type,
-    total: picked.length, limitMs, revealMs, created: Date.now(),
+    total: picked.length,
+    limitMs: limitOverride || (cat.type === 'survey' ? SURVEY_LIMIT_MS : LIMIT_MS),
+    revealMs,
+    created: Date.now(),
   };
   for (let tries = 0; tries < 8; tries++) {
     const p = String(Math.floor(100000 + Math.random() * 900000));
@@ -276,7 +279,8 @@ function render() {
     const right = meta.type === 'survey'
       ? `<ol class="survey">${ranked.map((x) => `<li class="${x.people ? 'hit' : 'miss'}"><span class="rk">${x.rank || '–'}</span><span class="ans">${esc(x.text)}</span><b>${x.people} / ${SURVEY_PEOPLE}</b></li>`).join('')}</ol>`
       : `<p class="answer">✓ ${esc(ranked[0].text)}</p>`;
-    html = `<div class="card"><h2>${esc(r.q)}</h2>${right}</div><div class="card"><h2>Top players</h2>${boardHtml(5)}</div><div class="row">${close}</div>`;
+    const top = meta.type === 'survey' ? `<div class="card"><h2>Top players</h2>${boardHtml(5)}</div>` : '';
+    html = `<div class="card"><h2>${esc(r.q)}</h2>${right}</div>${top}<div class="row">${close}</div>`;
   } else if (state.phase === 'final') {
     html = `<div class="card"><h2>Final leaderboard</h2>${boardHtml(100)}
       <p class="mute">Saved to <a href="history.html">Event history</a>.</p></div><div class="row">${close}</div>`;

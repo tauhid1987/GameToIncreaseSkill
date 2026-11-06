@@ -9,11 +9,12 @@ It is a static site (GitHub Pages) with Firebase Realtime Database. There is no 
 | | Quick round (all normal categories) | জনমত ১০০ (100 people survey) |
 |---|---|---|
 | Questions per game | 10 | 10 |
-| Time per question | Up to 15 seconds. It moves on by itself at 15 seconds, or as soon as every player has finished | Same |
+| Time per question | Up to 15 seconds. It moves on by itself at the limit, or as soon as every player has finished | Up to 20 seconds, the same way |
 | Answers | 2 to 4 | 6 to 8: ranked answers with the top 3 clearly highest, plus at least 2 close-sounding wrong |
 | Wrong pick | Marked at once. Choose again until the time runs out | Uses up one of your 3 picks |
 | After a pick | Right or wrong | Right answers show their rank and how many of the 100 people gave them, such as "Rank 1 · 50 / 100" |
 | Points | 500 + up to 500 for speed, minus 25% per wrong pick | Marks plus timing: the people behind each right answer, plus up to 20% for picking it quickly. With 3 picks, finding the top 3 scores best |
+| Scores during play | Hidden. Players see right or wrong, and scores appear on the final leaderboard | Shown after every question |
 | Winner | Highest total. On a tie, the player who took less time | Same |
 
 The 100-people category is dummy training content for practising guessing. Its people counts are invented.
@@ -37,7 +38,7 @@ Questions live in **sets** inside each category. A set can be hosted once it has
 
 Open **Question bank**, pick a category and a set, or press **New set**.
 
-You can add questions one at a time, or paste or upload a `.txt` file. A blank line separates questions, a line `## Set name` starts a set, and other lines starting with `#` are ignored. Duplicates are skipped, and any question with a problem is listed with the reason.
+You can add questions one at a time, or paste or upload a `.txt` file. A blank line separates questions, a line `## Set name` starts a set, and other lines starting with `#` are ignored. Duplicates are skipped, and any question with a problem is listed with the reason. The **Repeated questions** box on that page lists any copies in the bank and removes them. A game never uses the same question twice.
 
 Quick round format, with `*` before the correct answer:
 

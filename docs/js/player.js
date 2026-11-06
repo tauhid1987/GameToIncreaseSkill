@@ -191,6 +191,7 @@ function render() {
       <div class="row between"><span class="pill">Question ${state.idx + 1} / ${meta.total}</span><span class="pill timer" id="timer"></span></div>
       <div class="bar"><i id="bar"></i></div>
       <h2 class="question">${esc(state.current.q)}</h2>
+      ${isSurvey() ? `<p class="choose">Choose ${SURVEY_PICKS} answers: find the top 3 of ${SURVEY_PEOPLE} people</p>` : ''}
       <div class="opts ${state.current.o.length > 5 ? 'many' : ''}">${state.current.o.map(optionButton).join('')}</div>
       <p class="hint center">${esc(questionHint())}</p></div>`;
     tick();
@@ -199,6 +200,16 @@ function render() {
   if (state.phase === 'results') {
     const r = reveal[qKey()];
     if (!r) return;
+    // Only the survey shows scores during play. Other categories show them at the end.
+    if (!isSurvey()) {
+      const picks = orderedAttempts(mine[qKey()]);
+      const right = picks.some((a) => r.val[a.opt] > 0);
+      const verdict = right ? '<p class="verdict okay">✓ You got it right</p>'
+        : picks.length ? '<p class="verdict nope">✕ You got it wrong</p>'
+          : '<p class="verdict mute">No answer</p>';
+      app.innerHTML = `<div class="card center"><h2>${esc(r.q)}</h2>${verdict}${resultBody(qKey(), r)}</div>`;
+      return;
+    }
     const place = leaderboard(players, scores).findIndex((p) => p.id === uid) + 1;
     app.innerHTML = `<div class="card"><h2>${esc(r.q)}</h2>${resultBody(qKey(), r)}
       <p class="center mute">Your total: <b>${scores[uid]?.s || 0}</b> · Rank ${place || '-'}</p></div>

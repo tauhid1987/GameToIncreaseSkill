@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   parseImport, validateQuestion, pickQuestions, buildGame, scoreQuestion, totalScores, leaderboard,
-  buildHistory, historyCsv, listSets, nextSet, questionsInSet, hasFinished, peopleRank, rankedAnswers, CATEGORIES, QUESTIONS_PER_GAME, LIMIT_MS,
+  buildHistory, historyCsv, listSets, nextSet, questionsInSet, hasFinished, peopleRank, rankedAnswers, findDuplicates, questionKey, SURVEY_LIMIT_MS, CATEGORIES, QUESTIONS_PER_GAME, LIMIT_MS,
 } from '../docs/js/core.js';
 
 const sample = (f) => readFileSync(new URL(`../samples/${f}`, import.meta.url), 'utf8');
@@ -46,7 +46,7 @@ test('survey validation enforces 6-8 answers, 2+ wrong, a clear top 3 and 100 pe
 });
 
 test('least-used questions are picked first', () => {
-  const bank = Array.from({ length: 15 }, (_, i) => ({ id: i, used: i < 5 ? 3 : 0 }));
+  const bank = Array.from({ length: 15 }, (_, i) => ({ id: i, q: `Q${i}?`, used: i < 5 ? 3 : 0 }));
   const picked = pickQuestions(bank);
   assert.equal(picked.length, 10);
   assert.ok(picked.every((q) => q.used === 0));
@@ -169,6 +169,44 @@ test('a game stopped early keeps only the questions played', () => {
   assert.equal(h.stoppedEarly, true);
   assert.equal(h.questions.length, 1);
   assert.equal(h.players[0].score, 1000);
+});
+
+test('the same question always gets the same key, so a double import cannot copy it', () => {
+  assert.equal(questionKey('সকালে কী খায়?'), questionKey('  সকালে   কী খায়? '));
+  assert.notEqual(questionKey('সকালে কী খায়?'), questionKey('রাতে কী খায়?'));
+  assert.match(questionKey('Any?'), /^q[0-9a-f]{16}$/);
+});
+
+test('a game never repeats a question, even if the bank holds copies', () => {
+  const bank = [];
+  for (let i = 0; i < 12; i++) bank.push({ id: `a${i}`, q: `Q${i}?`, set: 'Set 1' }, { id: `b${i}`, q: `Q${i}?`, set: 'Set 1' });
+  for (let run = 0; run < 50; run++) {
+    const picked = pickQuestions(bank);
+    assert.equal(picked.length, 10);
+    assert.equal(new Set(picked.map((q) => q.q)).size, 10);
+  }
+  const short = [];
+  for (let i = 0; i < 5; i++) short.push({ q: `Q${i}?` }, { q: `Q${i}?` });
+  assert.deepEqual(listSets(short).map((s) => [s.count, s.ready]), [[5, false]], 'copies do not count toward the 10');
+});
+
+test('repeated questions are found per category, and the oldest copy stays', () => {
+  const found = findDuplicates({
+    jonomot: {
+      old: { q: 'Same?', set: 'Set 1', createdAt: 1 },
+      copy1: { q: ' same? ', set: 'Set 1', createdAt: 5 },
+      copy2: { q: 'Same?', set: 'Set 1', createdAt: 9 },
+      other: { q: 'Different?', set: 'Set 1', createdAt: 2 },
+    },
+    gk: { x: { q: 'Same?', createdAt: 3 } },
+  });
+  assert.deepEqual(found, [{ cat: 'jonomot', set: 'Set 1', q: 'Same?', extra: ['copy1', 'copy2'] }]);
+  assert.deepEqual(findDuplicates({ gk: { a: { q: 'A?' }, b: { q: 'B?' } } }), []);
+});
+
+test('the survey gets 20 seconds and other categories 15', () => {
+  assert.equal(SURVEY_LIMIT_MS, 20000);
+  assert.equal(LIMIT_MS, 15000);
 });
 
 test('history records the event, and the CSV neutralises spreadsheet formulas', () => {

@@ -1,7 +1,7 @@
-import { dbRef, get, set, update, remove, push, requireHost } from './fb.js';
+import { dbRef, get, set, update, remove, requireHost } from './fb.js';
 import {
   CATEGORIES, QUESTIONS_PER_GAME, SURVEY_MAX_OPTIONS, DEFAULT_SET, categoryById, parseImport, validateQuestion,
-  normalizeText, listSets, setOf, esc,
+  normalizeText, listSets, setOf, questionKey, findDuplicates, esc,
 } from './core.js';
 
 const app = document.getElementById('app');
@@ -14,6 +14,7 @@ let items = {};
 let editing = null;     // id of the question loaded in the form
 let notice = '';
 let importErrors = [];
+let importing = false;
 
 const cat = () => categoryById(catId);
 const countIn = (id) => Object.keys(bank[id] || {}).length;
@@ -80,6 +81,8 @@ function render() {
     <p class="mute small">${readySets} set${readySets === 1 ? '' : 's'} ready in this category.</p>
     ${notice ? `<p class="notice">${esc(notice)}</p>` : ''}</div>
 
+    ${duplicatesHtml()}
+
     <form class="card" id="form"><h2>${editing ? 'Edit question' : `Add a question to ${esc(setName)}`}</h2>${formHtml(editing ? items[editing] : null)}
       <div class="row"><button>${editing ? 'Save changes' : 'Add question'}</button>${editing ? '<button type="button" class="ghost" id="cancel">Cancel</button>' : ''}</div></form>
 
@@ -129,6 +132,7 @@ function render() {
       render();
     };
   };
+  app.querySelector('#dedupe')?.addEventListener('click', removeDuplicates);
   app.querySelector('#form').onsubmit = saveForm;
   app.querySelector('#cancel')?.addEventListener('click', () => { editing = null; render(); });
   app.querySelector('#import').onclick = runImport;
@@ -149,6 +153,27 @@ function render() {
       reload();
     };
   });
+}
+
+function duplicatesHtml() {
+  const repeats = findDuplicates(bank);
+  if (!repeats.length) return '<div class="card"><h2>Repeated questions</h2><p class="okay">None in any category.</p></div>';
+  const extra = repeats.reduce((n, r) => n + r.extra.length, 0);
+  return `<div class="card"><h2>Repeated questions</h2>
+    <p class="error">${extra} extra cop${extra === 1 ? 'y' : 'ies'} of ${repeats.length} question${repeats.length === 1 ? '' : 's'}. Removing them keeps one copy of each.</p>
+    <button id="dedupe" type="button">Remove the extra copies</button>
+    <details><summary>See which ones</summary><ul class="picks">${repeats.map((r) => `<li><b>${esc(categoryById(r.cat)?.label || r.cat)} · ${esc(r.set)}</b> (${r.extra.length + 1} copies): ${esc(r.q)}</li>`).join('')}</ul></details></div>`;
+}
+
+async function removeDuplicates() {
+  const repeats = findDuplicates(bank);
+  const writes = {};
+  repeats.forEach((r) => r.extra.forEach((id) => { writes[`${r.cat}/${id}`] = null; }));
+  const count = Object.keys(writes).length;
+  if (!confirm(`Delete ${count} extra cop${count === 1 ? 'y' : 'ies'}? One copy of each question stays.`)) return;
+  await update(dbRef('bank'), writes);
+  notice = `Removed ${count} extra cop${count === 1 ? 'y' : 'ies'}.`;
+  reload();
 }
 
 function suggestSetName(sets) {
@@ -176,7 +201,7 @@ async function saveForm(e) {
     notice = 'Question saved.';
     editing = null;
   } else {
-    await set(push(dbRef(`bank/${catId}`)), { ...q, set: setName, used: 0, createdAt: Date.now(), createdBy: uid });
+    await set(dbRef(`bank/${catId}/${questionKey(q.q)}`), { ...q, set: setName, used: 0, createdAt: Date.now(), createdBy: uid });
     notice = 'Question added.';
   }
   reload();
@@ -194,21 +219,28 @@ async function addQuestions(id, existing, questions) {
   const now = Date.now();
   const writes = {};
   fresh.forEach((q, i) => {
-    writes[push(dbRef(`bank/${id}`)).key] = { ...q, used: 0, createdAt: now + i, createdBy: uid };
+    writes[questionKey(q.q)] = { ...q, used: 0, createdAt: now + i, createdBy: uid };
   });
   if (fresh.length) await update(dbRef(`bank/${id}`), writes);
   return { added: fresh.length, duplicates: questions.length - fresh.length };
 }
 
 async function runImport() {
+  if (importing) return;
+  importing = true;
   const { questions, errors } = parseImport(app.querySelector('#imp').value, cat().type, setName);
   importErrors = errors;
-  const r = await addQuestions(catId, items, questions);
+  // Always compare with the database as it is now, not as it was when the page opened.
+  const current = (await get(dbRef(`bank/${catId}`))).val() || {};
+  const r = await addQuestions(catId, current, questions);
+  importing = false;
   notice = `Imported ${r.added}. Skipped ${r.duplicates} duplicate${r.duplicates === 1 ? '' : 's'} and ${errors.length} with problems.`;
   reload();
 }
 
 async function importPack(files) {
+  if (importing) return;
+  importing = true;
   importErrors = [];
   let added = 0;
   let duplicates = 0;
@@ -227,6 +259,7 @@ async function importPack(files) {
     added += r.added;
     duplicates += r.duplicates;
   }
+  importing = false;
   notice = `Pack imported: ${added} added, ${duplicates} already there, ${importErrors.length} with problems.${skippedFiles.length ? ` Files with no matching category: ${skippedFiles.join(', ')}.` : ''}`;
   reload();
 }

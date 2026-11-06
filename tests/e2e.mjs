@@ -124,8 +124,13 @@ async function quickRound(browser, host) {
     // After getting it right, the question is locked.
     assert.equal(await p2.locator('[data-opt]:not([disabled])').count(), 0);
     if (i === 0) await shot(host, 'host-question');
-    await p1.getByText('Top players').waitFor({ timeout: LIMIT + 8000 });
+    await p1.getByText('You got it right').waitFor({ timeout: LIMIT + 8000 });
+    await p2.getByText('You got it right').waitFor({ timeout: 5000 });
+    await p3.getByText('No answer').waitFor({ timeout: 5000 });
+    assert.equal(await p1.getByText('Top players').count(), 0, 'no scores during play outside the survey');
+    assert.equal(await p1.getByText('Your total').count(), 0, 'no scores during play outside the survey');
     if (i === 0) {
+      assert.equal(await host.getByText('Top players').count(), 0, 'the host screen hides scores too');
       const gap = Date.now() - started;
       console.log(`  question 1 moved to results after ${gap} ms (limit ${LIMIT})`);
       assert.ok(gap >= LIMIT - 200, 'the question stayed open for the full time even though players had answered');
@@ -170,6 +175,7 @@ async function surveyRound(browser, host) {
   for (let i = 0; i < 10; i++) {
     await Promise.all([p1, p2].map((pg) => waitForQuestion(pg, i + 1)));
     const shownAt = Date.now();
+    await p1.getByText('Choose 3 answers').waitFor();
     const k = key[`q${i}`];
     const total = Object.keys(k).length;
     assert.ok(total >= 6 && total <= 8, `6-8 answers, got ${total}`);
@@ -289,6 +295,22 @@ async function main() {
   ]);
   await host.getByText('Pack imported: 24 added').waitFor();
   await host.getByText('nothing.txt').waitFor();
+
+  console.log('Repeated questions in the bank are found and removed');
+  const jonomot = await (await fetch(`http://127.0.0.1:9000/bank/jonomot.json?ns=${NS}`, { headers: { Authorization: 'Bearer owner' } })).json();
+  const [, original] = Object.entries(jonomot)[0];
+  await fetch(`http://127.0.0.1:9000/bank/jonomot/copyOne.json?ns=${NS}`, {
+    method: 'PUT', headers: { Authorization: 'Bearer owner' }, body: JSON.stringify({ ...original, createdAt: Date.now() + 99999 }),
+  });
+  await host.goto(`${BASE}/bank.html?cat=jonomot`);
+  await host.getByText('1 extra copy of 1 question').waitFor();
+  host.once('dialog', (d) => d.accept());
+  await host.getByRole('button', { name: 'Remove the extra copies' }).click();
+  await host.getByText('Removed 1 extra copy.').waitFor();
+  await host.getByText('None in any category.').waitFor();
+  // A double import, even at the same moment, adds nothing.
+  await host.locator('#pack').setInputFiles([{ name: 'gk.txt', mimeType: 'text/plain', buffer: Buffer.from(sample('general-knowledge.txt')) }]);
+  await host.getByText('Pack imported: 0 added, 10 already there').waitFor();
 
   console.log('Picker only offers categories with 10 questions');
   await host.goto(`${BASE}/host.html${timing}`);

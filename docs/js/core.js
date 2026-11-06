@@ -2,6 +2,7 @@
 
 export const QUESTIONS_PER_GAME = 10;
 export const LIMIT_MS = 15000;        // time to answer each question
+export const SURVEY_LIMIT_MS = 20000; // the survey has more answers to read
 export const REVEAL_MS = 3000;        // how long the answer stays on screen before auto-next
 export const WRONG_PENALTY = 0.25;    // each wrong pick takes 25% off a quick-round question
 export const SURVEY_MIN_OPTIONS = 6;
@@ -31,7 +32,40 @@ export const CATEGORIES = [
 export const categoryById = (id) => CATEGORIES.find((c) => c.id === id);
 
 const clean = (s) => String(s ?? '').trim();
-export const normalizeText = (s) => clean(s).toLowerCase().replace(/\s+/g, ' ');
+export const normalizeText = (s) => clean(s).normalize('NFC').toLowerCase().replace(/\s+/g, ' ');
+
+// The same question text always gets the same database key, so importing it twice can't make a copy.
+export function questionKey(text) {
+  let a = 0xdeadbeef;
+  let b = 0x41c6ce57;
+  for (const ch of normalizeText(text)) {
+    const code = ch.codePointAt(0);
+    a = Math.imul(a ^ code, 2654435761);
+    b = Math.imul(b ^ code, 1597334677);
+  }
+  a = Math.imul(a ^ (a >>> 16), 2246822507) ^ Math.imul(b ^ (b >>> 13), 3266489909);
+  b = Math.imul(b ^ (b >>> 16), 2246822507) ^ Math.imul(a ^ (a >>> 13), 3266489909);
+  return `q${(b >>> 0).toString(16).padStart(8, '0')}${(a >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+// Finds repeated questions in the bank. The oldest copy of each stays.
+export function findDuplicates(bank) {
+  const repeats = [];
+  Object.entries(bank || {}).forEach(([cat, items]) => {
+    const groups = new Map();
+    Object.entries(items || {}).forEach(([id, q]) => {
+      const k = normalizeText(q.q);
+      groups.set(k, [...(groups.get(k) || []), { id, ...q }]);
+    });
+    groups.forEach((copies) => {
+      if (copies.length < 2) return;
+      copies.sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0) || x.id.localeCompare(y.id));
+      const [keep, ...extra] = copies;
+      repeats.push({ cat, set: keep.set || DEFAULT_SET, q: keep.q, extra: extra.map((c) => c.id) });
+    });
+  });
+  return repeats;
+}
 
 // ---------- validating one question ----------
 
@@ -101,13 +135,18 @@ const bySetName = (a, b) => a.localeCompare(b, undefined, { numeric: true });
 export function listSets(items) {
   const sets = new Map();
   items.forEach((q) => {
-    const row = sets.get(setOf(q)) || { name: setOf(q), count: 0, used: 0 };
-    row.count += 1;
+    const row = sets.get(setOf(q)) || { name: setOf(q), texts: new Set(), used: 0 };
+    row.texts.add(normalizeText(q.q));
     row.used += q.used || 0;
     sets.set(row.name, row);
   });
   return [...sets.values()]
-    .map((s) => ({ ...s, ready: s.count >= QUESTIONS_PER_GAME, plays: Math.ceil(s.used / Math.max(s.count, 1)) }))
+    .map(({ texts, ...s }) => ({
+      ...s,
+      count: texts.size,
+      ready: texts.size >= QUESTIONS_PER_GAME,
+      plays: Math.ceil(s.used / Math.max(texts.size, 1)),
+    }))
     .sort((a, b) => bySetName(a.name, b.name));
 }
 
@@ -150,9 +189,18 @@ export function shuffled(list, rng = Math.random) {
   return a;
 }
 
-// Least-used questions first, so repeats only happen once the bank has been used up.
+// Least-used questions first, and never the same question twice in one game.
 export function pickQuestions(bank, n = QUESTIONS_PER_GAME, rng = Math.random) {
-  return shuffled(bank, rng).sort((a, b) => (a.used || 0) - (b.used || 0)).slice(0, n);
+  const seen = new Set();
+  return shuffled(bank, rng)
+    .sort((a, b) => (a.used || 0) - (b.used || 0))
+    .filter((q) => {
+      const k = normalizeText(q.q);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .slice(0, n);
 }
 
 // Rank of a survey answer among the 100 people: 1 is the most popular. Wrong answers have no rank (0).
